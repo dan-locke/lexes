@@ -1,0 +1,4 @@
+data/*
+parser/parser_old.go
+lexes
+.DS_Store
