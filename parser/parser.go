@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"encoding/json"
-	"fmt"
 )
 
 const FALSE_SPAN_AND int = 1000000
@@ -271,8 +270,6 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 		}
 	} 
 	
-	// clause[n.Operator] = append(clause[n.Operator], node)
-	fmt.Println(node)
 	return &node
 }
 

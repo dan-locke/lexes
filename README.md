@@ -24,6 +24,8 @@ Proximity Operators
 --------------------
 Unlike Lexis, w/s and w/p can be used in combinination with w/n operators. This is because, w/s and w/p default to a proximity of 20 and 50 terms respectively. 
 
+Proximity operators do not work in conjunction with boolean operators in Elasticsearch. To get around this, a span_near query is used with a slop of 1,000,000 to represent an AND operator, and span_or represents an OR operator.  
+
 Not Operators
 --------------------
 "NOT" is supported both as "a AND NOT b" (Lexis format), or by simply specifying "a NOT b". 
