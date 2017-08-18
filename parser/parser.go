@@ -32,34 +32,33 @@ type Node struct {
 
 
 // Parse a boolean query from string. In the process, the validity of the query is checked. 
-func Parse(query string, insert_ops bool, field string) ([]byte, error) {
+func Parse(query, field string, retrieve []string, insert_ops, highlight bool) ([]byte, error) {
 
 	query = strings.Replace(query, ".", " ", -1)
 	query = strings.TrimSpace(query)
 	query = strings.ToLower(query)
 
-	quote_pos := make([]int, 0)
-
+	num_quotes := 0 
 	level := 0
 
 	// Error checking parentheses and quotes. This is implicitly done in the Shunting Yard algorithm, 
 	// but, it is done here to give explicit error reasons. 
-	for i, char := range query { 
+	for _, char := range query { 
 		if char == '"' {
-			quote_pos = append(quote_pos, i)
+			num_quotes++
 		}
-		if char == '(' && (len(quote_pos) % 2) == 0 {
-			level++ 
-
+		if num_quotes % 2 == 0{
+			if char == '(' {
+				level++ 
+			}
+			if char == ')' {
+				level--
+			} 
+			// Replace truncation to match es format.
+			if char == '!' {
+				char = '*'
+			}
 		}
-		if char == ')' && (len(quote_pos) % 2) == 0 {
-			level--
-		} 
-		// Replace truncation to match es format.
-		if char == '!' && (len(quote_pos) % 2) == 0 {
-			char = '*'
-		}
-
 		if level < 0 {
 			return []byte{}, errors.New("Malformed query: Parenthetical clauses do not match. A clause is closed prior to being opened.")
 		}
@@ -67,7 +66,7 @@ func Parse(query string, insert_ops bool, field string) ([]byte, error) {
 	if level != 0 {
 		return []byte{}, errors.New("Malformed query: Number of parentheses does not match. A clause is not closed.")
 	} 
-	if (len(quote_pos) % 2) != 0 {
+	if num_quotes % 2 != 0 {
 		return []byte{}, errors.New("Malformed query: Number of quotation marks does not match. A quotation is not closed.")
 	}
 
@@ -86,7 +85,7 @@ func Parse(query string, insert_ops bool, field string) ([]byte, error) {
 	if err != nil {
 		return []byte{}, err
 	}
-	return parseToJson(&tree, field, false)
+	return parseToJson(&tree, field, retrieve, highlight)
 }
 
 func parsePostfix(rpn_stack []string) (Node, error) {
@@ -103,19 +102,7 @@ func parsePostfix(rpn_stack []string) (Node, error) {
 
 			operands, stack = stack[len(stack) - num_take:], stack[:len(stack) - num_take] 
 
-			if token == "w/p" {
-				node.Slop = true
-				node.Proximity = WITHIN_PARA
-				node.Operator = "must"
-			} else if token == "w/s" {
-				node.Slop = true
-				node.Proximity = WITHIN_SENT
-				node.Operator = "must"
-			} else if token == "and" {
-				node.Operator = "must"
-			} else if token == "or" {
-				node.Operator = "should"
-			} else if token == "not" {
+			if token == "not" {
 				node.Operator = "must"
 
 				left := Node{
@@ -126,6 +113,9 @@ func parsePostfix(rpn_stack []string) (Node, error) {
 				if reflect.TypeOf(operands[1]) == reflect.TypeOf("") {
 					left.Type[0] = assignTtype(operands[1].(string))
 				}
+				if left.Type[0] == Prefix {
+					left.Children[0] = strings.TrimSuffix(operands[1].(string), "*")
+				} 
 
 				right := Node{
 					Operator : "must_not",
@@ -135,26 +125,54 @@ func parsePostfix(rpn_stack []string) (Node, error) {
 				if reflect.TypeOf(operands[0]) == reflect.TypeOf("") {
 					right.Type[0] = assignTtype(operands[0].(string))
 				} 
+				if right.Type[0] == Prefix {
+					right.Children[0] = strings.TrimSuffix(operands[0].(string), "*")
+				} 
 
 				node.Children = append(node.Children, left, right)
-
 			} else {
-				node.Slop = true
-				node.Proximity = token[2:]
-				node.Operator = "must"
-			}
-			
-			if token != "not" {
+				switch(token) {
+					case "w/p": 
+						node.Slop = true
+						node.Proximity = WITHIN_PARA
+						node.Operator = "must"
+						break
+
+					case "w/s":
+						node.Slop = true
+						node.Proximity = WITHIN_SENT
+						node.Operator = "must"
+						break
+
+					case "and":
+						node.Operator = "must"
+						break
+
+					case "or":
+						node.Operator = "should"
+						break
+
+					default:
+						// Handle w/n 
+						node.Slop = true
+						node.Proximity = token[2:]
+						node.Operator = "must"
+						break
+				}
+				
 				for op := range operands {
 					if reflect.TypeOf(operands[op]) == reflect.TypeOf("") {
 						node.Type = append(node.Type, assignTtype(operands[op].(string)))
 					} else {
 						node.Type = append(node.Type, NotString)
 					}
+
+					if node.Type[op] == Prefix {
+						operands[op] = strings.TrimSuffix(operands[op].(string), "*")
+					}
 					node.Children = append(node.Children, operands[op])
 				}
 			}
-
 			stack = append(stack, node)
 
 		} else {
@@ -256,12 +274,16 @@ func parseTerm(term string, t ttype, field string) *map[string]interface{} {
 	return &clause
 }
 
-func parseToJson(n *Node, field string, highlight bool) ([]byte, error) {
+func parseToJson(n *Node, field string, retrieve []string, highlight bool) ([]byte, error) {
 	query := nodeToJson(*n, field)
 	res := map[string]interface{}{
 		"query" : map[string]interface{}{
 			"bool" : query,
 		},
+	}
+
+	if len(retrieve) != 0 {
+		res["_source"] = retrieve
 	}
 
 	if highlight {
@@ -276,8 +298,4 @@ func parseToJson(n *Node, field string, highlight bool) ([]byte, error) {
 	}
 	
 	return json.MarshalIndent(res, "", "   ")
-	// if err != nil {
-	// 	return []byte{}, err
-	// }
-	// return js, nil
 }

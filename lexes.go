@@ -14,8 +14,9 @@ import (
 type args struct {
 	Input          string `arg:"help:File containing a search strategy."`
 	Output         string `arg:"help:File to output the transformed query to."`
-	Fields         string `arg:"help:Fields to search on (defaults to plain_text)."`
+	Field         string `arg:"help:Fields to search on (defaults to plain_text)."`
 	Operators	   bool `arg:"help:Insert operators between keywords (true)."`
+	Retrieve	   []string `arg:"help:Fields to be returned in Elasticsearch result."`
 	Highlight	   bool `arg:"help:Return highlight in es results (false)."`
 }
 
@@ -34,9 +35,10 @@ func main() {
 	inputFile := os.Stdin
 	outputFile := os.Stdout
 	
-	args.Fields = "plain_text"
+	args.Field = "plain_text"
+	args.Retrieve = []string{"case_name", "date_filed"}
 	args.Operators = true
-	// args.Highlight = false
+	args.Highlight = false
 
 	// Parse the args into the struct
 	arg.MustParse(&args)
@@ -55,7 +57,7 @@ func main() {
 		query = string(data)
 	}
 
-	js, err := parser.Parse(query, args.Operators, args.Fields)
+	js, err := parser.Parse(query, args.Field, args.Retrieve, args.Operators, args.Highlight)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -73,7 +75,7 @@ func main() {
 		}
 	} 
 
-	outputFile.Write([]byte(js))
+	outputFile.Write(js)
 	fmt.Println("\n")
 }
 

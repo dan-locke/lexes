@@ -1,6 +1,6 @@
 # lexes
 
-A Lexisnexis Boolean query to Elasticsearch query parser.
+A LexisNexis Boolean query to Elasticsearch query parser.
 
 Operator precedence
 --------------------
@@ -37,7 +37,6 @@ An option exists for specifying whether query terms are automatically separated 
 Wildcard operators are supported in clauses that do not involve proximity operators. Both "*" and "!" are supported as wildcard operators. Two instances are applicable:
 1. "car*" or "car!" - in which case, the term, "car", denotes a prefix, and any terms that have the term as its prefix are matched - ie. car, carried, carrier;
 2. "car*d" - in which case, the asterisk denotes any number of characters that may be matched before the prefix and suffix are to be matched.
-
 
 In progress
 --------------------
