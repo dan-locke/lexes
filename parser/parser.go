@@ -32,36 +32,45 @@ type Node struct {
 	Type []ttype
 }
 
+func ParseJson(query, field string, retrieve []string, insert_ops, highlight bool) ([]byte, error) {
+	qry, err := Parse(query, field, retrieve, insert_ops, highlight)
+	if err != nil {
+		return []byte{}, err
+	}
+	return json.MarshalIndent(qry, "", "    ")
+}
 
 // Parse a boolean query from string. In the process, the validity of the query is checked. 
-func Parse(query, field string, retrieve []string, insert_ops, highlight bool) ([]byte, error) {
+func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (*map[string]interface{}, error) {
 
 	query = strings.Replace(query, ".", " ", -1)
 	query = strings.TrimSpace(query)
 	query = strings.ToLower(query)
 
+	var err_interface map[string]interface{}
+
 	stack, err := createStack(query)
 	if err != nil {
-		return []byte{}, err
+		return &err_interface, err
 	}
 	stack = removeLexisAndNot(stack) 
 	stack, err = checkKeywordArrangement(stack, insert_ops)
 	if err != nil {
-		return []byte{}, err
+		return &err_interface, err
 	}
 
 	res, err := convertInfixToPostfix(stack)
 	if err != nil {
-		return []byte{}, err
+		return &err_interface, err
 	}
 	tree, err := parsePostfix(res)
 	if err != nil {
-		return []byte{}, err
+		return &err_interface, err
 	}
-	return parseToJson(&tree, field, retrieve, highlight)
+	return parseToJson(tree, field, retrieve, highlight), nil
 }
 
-func parsePostfix(rpn_stack []string) (Node, error) {
+func parsePostfix(rpn_stack []string) (*Node, error) {
 	stack := make([]interface{}, 0)
 	
 	for i := range rpn_stack {
@@ -154,7 +163,7 @@ func parsePostfix(rpn_stack []string) (Node, error) {
 	}
 
 	if len(stack) != 1 {
-		return Node{}, errors.New("Something has gone wrong in the stack creation.")
+		return &Node{}, errors.New("Something has gone wrong in the stack creation.")
 	} else if reflect.TypeOf(stack[0]) == reflect.TypeOf("") {
 		stack[0] = Node{
 			Operator: "must",
@@ -162,7 +171,8 @@ func parsePostfix(rpn_stack []string) (Node, error) {
 			Type: []ttype{assignTtype(stack[0].(string))},
 		}
 	}
-	return stack[0].(Node), nil
+	n := stack[0].(Node)
+	return &n, nil
 }
 
 func assignTtype(token string) ttype {
@@ -174,27 +184,22 @@ func assignTtype(token string) ttype {
 	return Phrase
 }
 
-func nodeToJson(n Node, field string, span_child bool) interface{} {
-	// clause := map[string][]interface{}{}
+func nodeToInterface(n Node, field string, span_child bool) interface{} {
 	var clause interface{}
 
 	if n.Slop || span_child {
 		clause = handleSpanOperator(n, field)
 	} else {
-		// clause = map[string][]interface{}{}
 		children := make([]interface{}, len(n.Children))
 	
 		for i := range n.Children {
 			if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
-				// Change here to change for where seen_span
-
 				children[i] = parseTerm(n.Children[i].(string), n.Type[i], field, span_child)
 			} else {
 				// Parse node recursively 		
-				children[i] = nodeToJson(n.Children[i].(Node), field, span_child)
+				children[i] = nodeToInterface(n.Children[i].(Node), field, span_child)
 			}
 		}
-		// clause[n.Operator] = append(clause[n.Operator], nodeToJson(n.Children[i].(Node), field, span_child))
 		clause = map[string]interface{} {
 			n.Operator : children,
 		}
@@ -211,7 +216,7 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 			clauses[i] = parseTerm(n.Children[i].(string), n.Type[i], field, true)
 		} else {
 			// Parse node recursively 		
-			clauses[i] = nodeToJson(n.Children[i].(Node), field, true)
+			clauses[i] = nodeToInterface(n.Children[i].(Node), field, true)
 		}
 	}
 	
@@ -313,9 +318,9 @@ func parseTerm(term string, t ttype, field string, span bool) *map[string]interf
 	return &clause
 }
 
-func parseToJson(n *Node, field string, retrieve []string, highlight bool) ([]byte, error) {
+func parseToJson(n *Node, field string, retrieve []string, highlight bool) *map[string]interface{} {
 	
-	query := nodeToJson(*n, field, false)
+	query := nodeToInterface(*n, field, false)
 
 	res := map[string]interface{}{}
 	
@@ -331,7 +336,6 @@ func parseToJson(n *Node, field string, retrieve []string, highlight bool) ([]by
 		}
 	}
 
-
 	if len(retrieve) != 0 {
 		res["_source"] = retrieve
 	}
@@ -346,6 +350,5 @@ func parseToJson(n *Node, field string, retrieve []string, highlight bool) ([]by
 			},
 		}
 	}
-	
-	return json.MarshalIndent(res, "", "   ")
+	return &res
 }

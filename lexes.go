@@ -57,7 +57,7 @@ func main() {
 		query = string(data)
 	}
 
-	js, err := parser.Parse(query, args.Field, args.Retrieve, args.Operators, args.Highlight)
+	js, err := parser.ParseJson(query, args.Field, args.Retrieve, args.Operators, args.Highlight)
 	if err != nil {
 		log.Panic(err)
 	}
