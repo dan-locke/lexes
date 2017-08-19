@@ -40,41 +40,12 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	query = strings.TrimSpace(query)
 	query = strings.ToLower(query)
 
-	num_quotes := 0 
-	level := 0
-
-	// Error checking parentheses and quotes. This is implicitly done in the Shunting Yard algorithm, 
-	// but, it is done here to give explicit error reasons. 
-	for _, char := range query { 
-		if char == '"' {
-			num_quotes++
-		}
-		if num_quotes % 2 == 0{
-			if char == '(' {
-				level++ 
-			}
-			if char == ')' {
-				level--
-			} 
-			// Replace truncation to match es format.
-			if char == '!' {
-				char = '*'
-			}
-		}
-		if level < 0 {
-			return []byte{}, errors.New("Malformed query: Parenthetical clauses do not match. A clause is closed prior to being opened.")
-		}
+	stack, err := createStack(query)
+	if err != nil {
+		return []byte{}, err
 	}
-	if level != 0 {
-		return []byte{}, errors.New("Malformed query: Number of parentheses does not match. A clause is not closed.")
-	} 
-	if num_quotes % 2 != 0 {
-		return []byte{}, errors.New("Malformed query: Number of quotation marks does not match. A quotation is not closed.")
-	}
-
-	stack := createStack(query)
 	stack = removeLexisAndNot(stack) 
-	stack, err := checkKeywordArrangement(stack, insert_ops)
+	stack, err = checkKeywordArrangement(stack, insert_ops)
 	if err != nil {
 		return []byte{}, err
 	}

@@ -14,11 +14,15 @@ var precedence = map[string]int {
 	"not": 1,	
 }
 
-func createStack(component string) []string {
+func createStack(component string) ([]string, error) {
 	word := ""
 	stack := []string{}
+
 	num_quote_encountered := 0
+	level := 0
+
 	component_len := len(component) - 1
+
 	for i, char := range component {
 		switch(char) {
 			case '"':
@@ -28,6 +32,7 @@ func createStack(component string) []string {
 					stack = append(stack, "(")
 					word = ""
 				}
+				level++
 			case ')':
 				if num_quote_encountered % 2 == 0 {
 					if len(word) > 0 {
@@ -36,6 +41,7 @@ func createStack(component string) []string {
 					}
 					stack = append(stack, ")")
 				}
+				level--
 			case ' ':
 				if num_quote_encountered % 2 != 0 {
 					word += string(char)
@@ -45,14 +51,25 @@ func createStack(component string) []string {
 						word = ""
 					}
 				}
+			case '!':
+				word += "*"
 			default: 
 				word += string(char)
 		}
 		if i == component_len && word != "" {
 			stack = append(stack, strings.TrimSpace(word))		
 		}
+		if level < 0 {
+			return []string{}, errors.New("Malformed query: Parenthetical clauses do not match. A clause is closed prior to being opened.")
+		}
 	}
-	return stack
+	if level != 0 {
+		return []string{}, errors.New("Malformed query: Number of parentheses does not match. A clause is not closed.")
+	} 
+	if num_quote_encountered % 2 != 0 {
+		return []string{}, errors.New("Malformed query: Number of quotation marks does not match. A quotation is not closed.")
+	}
+	return stack, nil
 }
 
 func convertInfixToPostfix(in_stack []string) ([]string, error) {
