@@ -3,6 +3,7 @@ package parser
 import (
 	"errors"
 	"strings"
+	"strconv"
 )
 
 var precedence = map[string]int {
@@ -103,11 +104,27 @@ func convertInfixToPostfix(in_stack []string) ([]string, error) {
 			if !ok {
 				result = append(result, token)		
 			} else {
-				for len(temp) > 0 && precedence[temp[len(temp) - 1]] > curr {
-					var t string
-					t, temp = temp[len(temp) - 1], temp[:len(temp) - 1]
-					result = append(result, t)
+				for len(temp) > 0 {
+					c_span, _ := strconv.Atoi(in_stack[i][2:])
+					p_token := temp[len(temp) - 1]
+					p_span := -1
+
+					p_prox := checkProximityOperators(temp[len(temp) - 1])
+					if p_prox == 1 {
+						p_token = "w/"	
+						p_span, _ = strconv.Atoi(temp[len(temp) - 1][2:])	
+					} 
+
+					if ((curr == 5 && precedence[p_token] == 5 && p_span < c_span) || 
+						(precedence[p_token] > curr)) {
+						var t string
+						t, temp = temp[len(temp) - 1], temp[:len(temp) - 1]
+						result = append(result, t)
+					} else {
+						break
+					}
 				}
+
 				if token == "w/" {
 					temp = append(temp, in_stack[i])
 				} else {

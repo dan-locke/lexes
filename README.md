@@ -26,6 +26,8 @@ Unlike Lexis, w/s and w/p can be used in combinination with w/n operators. This 
 
 Proximity operators do not work in conjunction with boolean operators in Elasticsearch. To get around this, a span_near query is used with a slop of 1,000,000 to represent an AND operator, and span_or represents an OR operator.  
 
+/n operators are parsed from smallest to largest, the same as done by Lexis(see https://www.lexisnexis.com/help/global/US/en_US/gh_terms.asp). 
+
 Not Operators
 --------------------
 "NOT" is supported both as "a AND NOT b" (Lexis format), or by simply specifying "a NOT b". 
@@ -42,7 +44,6 @@ Wildcard operators are supported in clauses that do not involve proximity operat
 
 In progress
 --------------------
-- Precedence of /n operators. Currently, /n operators are parsed left to right. This differs from the parser employed by Lexis, which gives precedence to smaller proximity operators - ie. w/1 has a higher precedence than w/5, and is parsed first (see https://www.lexisnexis.com/help/global/US/en_US/gh_terms.asp). 
 - PRE/n operators.
 - NOT w/n and NOT PRE/n operators.
 - W/SEG operators. There is no need to currently support this as the indexed data does not contain recognised segments. 
