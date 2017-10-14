@@ -40,7 +40,7 @@ func ParseJson(query, field string, retrieve []string, insert_ops, highlight boo
 	return json.MarshalIndent(qry, "", "    ")
 }
 
-// Parse a boolean query from string. In the process, the validity of the query is checked. 
+// Parse a boolean query from string. In the process, the validity of the query is checked.
 func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (*map[string]interface{}, error) {
 
 	query = strings.Replace(query, ".", " ", -1)
@@ -53,7 +53,7 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	if err != nil {
 		return &err_interface, err
 	}
-	stack = removeLexisAndNot(stack) 
+	stack = removeLexisAndNot(stack)
 	stack, err = checkKeywordArrangement(stack, insert_ops)
 	if err != nil {
 		return &err_interface, err
@@ -72,17 +72,17 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 
 func parsePostfix(rpn_stack []string) (*Node, error) {
 	stack := make([]interface{}, 0)
-	
+	num_take := 2
+
 	for i := range rpn_stack {
 		token := rpn_stack[i]
 
 		if isOperator(token) {
-			num_take := 2
-
+			
 			node := Node{}
 			operands := make([]interface{}, 0)
 
-			operands, stack = stack[len(stack) - num_take:], stack[:len(stack) - num_take] 
+			operands, stack = stack[len(stack) - num_take:], stack[:len(stack) - num_take]
 
 			if token == "not" {
 				node.Operator = "must"
@@ -97,7 +97,7 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 				}
 				if left.Type[0] == Prefix {
 					left.Children[0] = strings.TrimSuffix(operands[1].(string), "*")
-				} 
+				}
 
 				right := Node{
 					Operator : "must_not",
@@ -106,15 +106,15 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 				}
 				if reflect.TypeOf(operands[0]) == reflect.TypeOf("") {
 					right.Type[0] = assignTtype(operands[0].(string))
-				} 
+				}
 				if right.Type[0] == Prefix {
 					right.Children[0] = strings.TrimSuffix(operands[0].(string), "*")
-				} 
+				}
 
 				node.Children = append(node.Children, left, right)
 			} else {
 				switch(token) {
-					case "w/p": 
+					case "w/p":
 						node.Slop = true
 						node.Proximity = WITHIN_PARA
 						node.Operator = "must"
@@ -135,13 +135,13 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 						break
 
 					default:
-						// Handle w/n 
+						// Handle w/n
 						node.Slop = true
 						node.Proximity = token[2:]
 						node.Operator = "must"
 						break
 				}
-				
+
 				for op := range operands {
 					if reflect.TypeOf(operands[op]) == reflect.TypeOf("") {
 						node.Type = append(node.Type, assignTtype(operands[op].(string)))
@@ -180,7 +180,7 @@ func assignTtype(token string) ttype {
 		return Prefix
 	} else if strings.Contains(token, "*") {
 		return Wildcard
-	} 
+	}
 	return Phrase
 }
 
@@ -191,40 +191,42 @@ func nodeToInterface(n Node, field string, span_child bool) interface{} {
 		clause = handleSpanOperator(n, field)
 	} else {
 		children := make([]interface{}, len(n.Children))
-	
+
 		for i := range n.Children {
 			if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
 				children[i] = parseTerm(n.Children[i].(string), n.Type[i], field, span_child)
 			} else {
-				// Parse node recursively 		
+				// Parse node recursively
 				children[i] = nodeToInterface(n.Children[i].(Node), field, span_child)
 			}
 		}
 		clause = map[string]interface{} {
-			n.Operator : children,
+			"bool" : map[string]interface{} {
+				n.Operator : children,
+			},	
 		}
 	}
-	
+
 	return clause
 }
 
 func handleSpanOperator(n Node, field string) *map[string]interface{} {
 	clauses := make([]interface{}, len(n.Children))
-	
+
 	for i := range n.Children {
 		if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
 			clauses[i] = parseTerm(n.Children[i].(string), n.Type[i], field, true)
 		} else {
-			// Parse node recursively 		
+			// Parse node recursively
 			clauses[i] = nodeToInterface(n.Children[i].(Node), field, true)
 		}
 	}
-	
+
 	node := map[string]interface{}{}
 	if n.Slop {
 		node = map[string]interface{}{
 			"span_near" : map[string]interface{}{
-				"clauses" : clauses, 
+				"clauses" : clauses,
 				"slop" : n.Proximity,
 				"in_order" : false,
 			},
@@ -232,20 +234,20 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 	} else if n.Operator == "must" {
 		node = map[string]interface{}{
 			"span_near" : map[string]interface{}{
-				"clauses" : clauses, 
+				"clauses" : clauses,
 				"slop" : FALSE_SPAN_AND,
 				"in_order" : false,
 			},
 		}
-	} else if n.Operator == "should" { 
+	} else if n.Operator == "should" {
 		node = map[string]interface{}{
 			"span_or" : map[string]interface{}{
 				"clauses" : clauses,
 				"in_order" : false,
 			},
 		}
-	} 
-	
+	}
+
 	return &node
 }
 
@@ -253,7 +255,7 @@ func parseTerm(term string, t ttype, field string, span bool) *map[string]interf
 
 	clause := map[string]interface{}{}
 
-	if span { 
+	if span {
 		switch(t) {
 			case Phrase:
 				clause = map[string]interface{}{
@@ -319,21 +321,11 @@ func parseTerm(term string, t ttype, field string, span bool) *map[string]interf
 }
 
 func parseToJson(n *Node, field string, retrieve []string, highlight bool) *map[string]interface{} {
-	
+
 	query := nodeToInterface(*n, field, false)
 
-	res := map[string]interface{}{}
-	
-	if n.Slop { 
-		res = map[string]interface{}{
-			"query" : query,
-		}
-	} else {
-		res = map[string]interface{}{
-			"query" : map[string]interface{}{
-				"bool" : query,
-			},
-		}
+	res := map[string]interface{}{
+		"query" : query,
 	}
 
 	if len(retrieve) != 0 {
