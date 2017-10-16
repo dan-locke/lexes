@@ -61,14 +61,14 @@ func createStack(component string) ([]string, error) {
 			stack = append(stack, strings.TrimSpace(word))		
 		}
 		if level < 0 {
-			return []string{}, errors.New("Malformed query: Parenthetical clauses do not match. A clause is closed prior to being opened.")
+			return nil, errors.New("Malformed query: Parenthetical clauses do not match. A clause is closed prior to being opened.")
 		}
 	}
 	if level != 0 {
-		return []string{}, errors.New("Malformed query: Number of parentheses does not match. A clause is not closed.")
+		return nil, errors.New("Malformed query: Number of parentheses does not match. A clause is not closed.")
 	} 
 	if num_quote_encountered % 2 != 0 {
-		return []string{}, errors.New("Malformed query: Number of quotation marks does not match. A quotation is not closed.")
+		return nil, errors.New("Malformed query: Number of quotation marks does not match. A quotation is not closed.")
 	}
 	return stack, nil
 }
@@ -96,7 +96,7 @@ func convertInfixToPostfix(in_stack []string) ([]string, error) {
 			if prox == 1 {
 				token = "w/"		
 			} else if prox == 2 {
-				return []string{}, errors.New("Malformed proximity operator.")
+				return nil, errors.New("Malformed proximity operator.")
 			}
 
 			curr, ok := precedence[token]
@@ -173,7 +173,7 @@ func checkKeywordArrangement(stack []string, insert bool) ([]string, error) {
 				if insert {
 					insert_pos = append(insert_pos, i)
 				} else {
-					return []string{}, errors.New("Missing operator between keywords where quotation marks required to denote phrase.")	
+					return nil, errors.New("Missing operator between keywords where quotation marks required to denote phrase.")	
 
 				}
 			}
