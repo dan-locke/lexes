@@ -35,7 +35,7 @@ type Node struct {
 func ParseJson(query, field string, retrieve []string, insert_ops, highlight bool) ([]byte, error) {
 	qry, err := Parse(query, field, retrieve, insert_ops, highlight)
 	if err != nil {
-		return []byte{}, err
+		return nil, err
 	}
 	return json.MarshalIndent(qry, "", "    ")
 }
@@ -47,25 +47,23 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	query = strings.TrimSpace(query)
 	query = strings.ToLower(query)
 
-	var err_interface map[string]interface{}
-
 	stack, err := createStack(query)
 	if err != nil {
-		return &err_interface, err
+		return nil, err
 	}
 	stack = removeLexisAndNot(stack)
 	stack, err = checkKeywordArrangement(stack, insert_ops)
 	if err != nil {
-		return &err_interface, err
+		return nil, err
 	}
 
 	res, err := convertInfixToPostfix(stack)
 	if err != nil {
-		return &err_interface, err
+		return nil, err
 	}
 	tree, err := parsePostfix(res)
 	if err != nil {
-		return &err_interface, err
+		return nil, err
 	}
 	return parseToJson(tree, field, retrieve, highlight), nil
 }
@@ -163,7 +161,7 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 	}
 
 	if len(stack) != 1 {
-		return &Node{}, errors.New("Something has gone wrong in the stack creation.")
+		return nil, errors.New("Something has gone wrong in the stack creation.")
 	} else if reflect.TypeOf(stack[0]) == reflect.TypeOf("") {
 		stack[0] = Node{
 			Operator: "must",
