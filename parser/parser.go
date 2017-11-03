@@ -42,7 +42,15 @@ func ParseJson(query, field string, retrieve []string, insert_ops, highlight boo
 
 // Parse a boolean query from string. In the process, the validity of the query is checked.
 func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (*map[string]interface{}, error) {
+	tree, err := ParseTree(query, field, retrieve, insert_ops)
+	if err != nil {
+		return nil, err
+	}
+	return parseToJson(tree, field, retrieve, highlight), nil
+}
 
+
+func ParseTree(query, field string, retrieve []string, insert_ops bool) (*Node, error) {
 	query = strings.Replace(query, ".", " ", -1)
 	query = strings.TrimSpace(query)
 	query = strings.ToLower(query)
@@ -61,11 +69,7 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	if err != nil {
 		return nil, err
 	}
-	tree, err := parsePostfix(res)
-	if err != nil {
-		return nil, err
-	}
-	return parseToJson(tree, field, retrieve, highlight), nil
+	return parsePostfix(res)
 }
 
 func parsePostfix(rpn_stack []string) (*Node, error) {
