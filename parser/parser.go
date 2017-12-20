@@ -46,7 +46,7 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	if err != nil {
 		return nil, err
 	}
-	return parseToJson(tree, field, retrieve, highlight), nil
+	return parseToMap(tree, field, retrieve, highlight), nil
 }
 
 
@@ -196,7 +196,7 @@ func nodeToInterface(n Node, field string, span_child bool) interface{} {
 
 		for i := range n.Children {
 			if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
-				children[i] = parseTerm(n.Children[i].(string), n.Type[i], field, span_child)
+				children[i] = parseTerm(n.Children[i].(string), field, n.Type[i], span_child)
 			} else {
 				// Parse node recursively
 				children[i] = nodeToInterface(n.Children[i].(Node), field, span_child)
@@ -217,7 +217,7 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 
 	for i := range n.Children {
 		if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
-			clauses[i] = parseTerm(n.Children[i].(string), n.Type[i], field, true)
+			clauses[i] = parseTerm(n.Children[i].(string), field, n.Type[i], true)
 		} else {
 			// Parse node recursively
 			clauses[i] = nodeToInterface(n.Children[i].(Node), field, true)
@@ -253,49 +253,91 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 	return &node
 }
 
-func parseTerm(term string, t ttype, field string, span bool) *map[string]interface{} {
+func parseTerm(term, field string, t ttype, span bool) *map[string]interface{} {
 
 	clause := map[string]interface{}{}
 
 	if span {
-		switch(t) {
-			case Phrase:
-				clause = map[string]interface{}{
-					"span_term" : map[string]interface{}{
-						field : term,
-					},
-				}
-				break
-
-			case Prefix:
-				clause = map[string]interface{}{
-					"span_multi" : map[string]interface{}{
-						"match" : map[string]interface{}{
-							"prefix" : map[string]interface{}{
-								field : term,
+		terms := strings.Split(term, " ")
+		numTerms := len(terms)
+		if numTerms > 1 {
+			spanTerms := make([]map[string]interface{}, numTerms)
+			for i := range terms {
+				if i == numTerms - 1 && t == Prefix {
+					spanTerms[i] = map[string]interface{}{
+						"span_multi" : map[string]interface{}{
+							"match" : map[string]interface{}{
+								"prefix" : map[string]interface{}{
+									field : terms[i],
+								},
 							},
 						},
-					},
-				}
-				break
-
-			case Wildcard:
-				clause = map[string]interface{}{
-					"span_multi" : map[string]interface{}{
-						"match" : map[string]interface{}{
-							"wildcard" : map[string]interface{}{
-								field : term,
+					}
+				} else if i == numTerms - 1 && t == Wildcard {
+					spanTerms[i] = map[string]interface{}{
+						"span_multi" : map[string]interface{}{
+							"match" : map[string]interface{}{
+								"wildcard" : map[string]interface{}{
+									field : terms[i],
+								},
 							},
 						},
-					},
+					}
+				} else {
+					spanTerms[i] = map[string]interface{}{
+						"span_term" : map[string]interface{}{
+							field: terms[i],
+						},
+					}
 				}
-				break
+			}
+			clause = map[string]interface{}{
+				"span_near" : map[string]interface{}{
+					"clauses": spanTerms,
+					"in_order": true,
+					"slop": 1,
+				},
+			}
+		} else {
+			switch(t) {
+				case Phrase:
+					clause = map[string]interface{}{
+						"span_term" : map[string]interface{}{
+							field : term,
+						},
+					}
+					break
+
+				case Prefix:
+					clause = map[string]interface{}{
+						"span_multi" : map[string]interface{}{
+							"match" : map[string]interface{}{
+								"prefix" : map[string]interface{}{
+									field : term,
+								},
+							},
+						},
+					}
+					break
+
+				case Wildcard:
+					clause = map[string]interface{}{
+						"span_multi" : map[string]interface{}{
+							"match" : map[string]interface{}{
+								"wildcard" : map[string]interface{}{
+									field : term,
+								},
+							},
+						},
+					}
+					break
+			}
 		}
 	} else {
 		switch(t) {
 			case Phrase:
 				clause = map[string]interface{}{
-					"term" : map[string]interface{}{
+					"match_phrase" : map[string]interface{}{
 						field : term,
 					},
 				}
@@ -303,7 +345,7 @@ func parseTerm(term string, t ttype, field string, span bool) *map[string]interf
 
 			case Prefix:
 				clause = map[string]interface{}{
-					"prefix" : map[string]interface{}{
+					"match_phrase_prefix" : map[string]interface{}{
 						field : term,
 					},
 				}
@@ -322,7 +364,7 @@ func parseTerm(term string, t ttype, field string, span bool) *map[string]interf
 	return &clause
 }
 
-func parseToJson(n *Node, field string, retrieve []string, highlight bool) *map[string]interface{} {
+func parseToMap(n *Node, field string, retrieve []string, highlight bool) *map[string]interface{} {
 
 	query := nodeToInterface(*n, field, false)
 
