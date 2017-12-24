@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"encoding/json"
+
+	"log"
 )
 
 const FALSE_SPAN_AND int = 1000000
@@ -46,6 +48,7 @@ func Parse(query, field string, retrieve []string, insert_ops, highlight bool) (
 	if err != nil {
 		return nil, err
 	}
+	log.Println(tree)
 	return parseToMap(tree, field, retrieve, highlight), nil
 }
 
@@ -86,77 +89,52 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 
 			operands, stack = stack[len(stack) - num_take:], stack[:len(stack) - num_take]
 
-			if token == "not" {
-				node.Operator = "must"
+			switch(token) {
+				case "w/p":
+					node.Slop = true
+					node.Proximity = WITHIN_PARA
+					node.Operator = "must"
+					break
 
-				left := Node{
-					Operator: "must",
-					Children: []interface{}{operands[1]},
-					Type: make([]ttype, 1),
- 				}
-				if reflect.TypeOf(operands[1]) == reflect.TypeOf("") {
-					left.Type[0] = assignTtype(operands[1].(string))
-				}
-				if left.Type[0] == Prefix {
-					left.Children[0] = strings.TrimSuffix(operands[1].(string), "*")
-				}
+				case "w/s":
+					node.Slop = true
+					node.Proximity = WITHIN_SENT
+					node.Operator = "must"
+					break
 
-				right := Node{
-					Operator : "must_not",
-					Children: []interface{}{operands[0]},
-					Type: make([]ttype, 1),
-				}
-				if reflect.TypeOf(operands[0]) == reflect.TypeOf("") {
-					right.Type[0] = assignTtype(operands[0].(string))
-				}
-				if right.Type[0] == Prefix {
-					right.Children[0] = strings.TrimSuffix(operands[0].(string), "*")
-				}
+				case "and":
+					node.Operator = "must"
+					break
 
-				node.Children = append(node.Children, left, right)
-			} else {
-				switch(token) {
-					case "w/p":
-						node.Slop = true
-						node.Proximity = WITHIN_PARA
-						node.Operator = "must"
-						break
+				case "or":
+					node.Operator = "should"
+					break
 
-					case "w/s":
-						node.Slop = true
-						node.Proximity = WITHIN_SENT
-						node.Operator = "must"
-						break
+				case "not": 
+					node.Operator = "must_not"
+					break
 
-					case "and":
-						node.Operator = "must"
-						break
-
-					case "or":
-						node.Operator = "should"
-						break
-
-					default:
-						// Handle w/n
-						node.Slop = true
-						node.Proximity = token[2:]
-						node.Operator = "must"
-						break
-				}
-
-				for op := range operands {
-					if reflect.TypeOf(operands[op]) == reflect.TypeOf("") {
-						node.Type = append(node.Type, assignTtype(operands[op].(string)))
-					} else {
-						node.Type = append(node.Type, NotString)
-					}
-
-					if node.Type[op] == Prefix {
-						operands[op] = strings.TrimSuffix(operands[op].(string), "*")
-					}
-					node.Children = append(node.Children, operands[op])
-				}
+				default:
+					// Handle w/n
+					node.Slop = true
+					node.Proximity = token[2:]
+					node.Operator = "must"
+					break
 			}
+
+			for op := range operands {
+				if reflect.TypeOf(operands[op]).Kind() == reflect.String {
+					node.Type = append(node.Type, assignTtype(operands[op].(string)))
+				} else {
+					node.Type = append(node.Type, NotString)
+				}
+
+				if node.Type[op] == Prefix {
+					operands[op] = strings.TrimSuffix(operands[op].(string), "*")
+				}
+				node.Children = append(node.Children, operands[op])
+			}
+			// }
 			stack = append(stack, node)
 
 		} else {
@@ -166,7 +144,7 @@ func parsePostfix(rpn_stack []string) (*Node, error) {
 
 	if len(stack) != 1 {
 		return nil, errors.New("Something has gone wrong in the stack creation.")
-	} else if reflect.TypeOf(stack[0]) == reflect.TypeOf("") {
+	} else if reflect.TypeOf(stack[0]).Kind() == reflect.String {
 		stack[0] = Node{
 			Operator: "must",
 			Children: []interface{}{stack[0]},
@@ -195,18 +173,29 @@ func nodeToInterface(n Node, field string, span_child bool) interface{} {
 		children := make([]interface{}, len(n.Children))
 
 		for i := range n.Children {
-			if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
+			if reflect.TypeOf(n.Children[i]).Kind() == reflect.String {
 				children[i] = parseTerm(n.Children[i].(string), field, n.Type[i], span_child)
 			} else {
 				// Parse node recursively
 				children[i] = nodeToInterface(n.Children[i].(Node), field, span_child)
 			}
 		}
-		clause = map[string]interface{} {
-			"bool" : map[string]interface{} {
-				n.Operator : children,
-			},	
+
+		if n.Operator == "must_not" {
+			clause = map[string]interface{} {
+				"bool" : map[string]interface{} {
+					"must_not": children[0],
+					"must": children[1],
+				},	
+			}
+		} else {
+			clause = map[string]interface{} {
+				"bool" : map[string]interface{} {
+					n.Operator : children,
+				},	
+			}
 		}
+		
 	}
 
 	return clause
@@ -216,7 +205,7 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 	clauses := make([]interface{}, len(n.Children))
 
 	for i := range n.Children {
-		if reflect.TypeOf(n.Children[i]) == reflect.TypeOf("") {
+		if reflect.TypeOf(n.Children[i]).Kind() == reflect.String {
 			clauses[i] = parseTerm(n.Children[i].(string), field, n.Type[i], true)
 		} else {
 			// Parse node recursively
@@ -246,6 +235,13 @@ func handleSpanOperator(n Node, field string) *map[string]interface{} {
 			"span_or" : map[string]interface{}{
 				"clauses" : clauses,
 				"in_order" : false,
+			},
+		}
+	} else if n.Operator == "must_not" {
+		node = map[string]interface{} {
+			"span_not" : map[string]interface{}{
+				"include" : clauses[1],
+				"exclude" : clauses[0],			
 			},
 		}
 	}
@@ -295,7 +291,7 @@ func parseTerm(term, field string, t ttype, span bool) *map[string]interface{} {
 				"span_near" : map[string]interface{}{
 					"clauses": spanTerms,
 					"in_order": true,
-					"slop": 1,
+					"slop": 0,
 				},
 			}
 		} else {
